@@ -1,6 +1,5 @@
 {:jig/components
 
-
  {:decoder
   {:jig/component mqtt-broker.core/MqttDecoder
    :jig/project "../mqtt-broker/project.clj"}
