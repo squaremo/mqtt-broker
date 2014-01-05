@@ -46,6 +46,7 @@
         (channelRead [ctx msg]
           (case (:type msg)
             :connect (reply ctx {:type :connack})
+            :pingreq (reply ctx {:type :pingresp})
             :publish (infof "PUBLISH MESSAGE: topic is %s, payload is '%s'" (:topic msg) (String. (:payload msg)))
             :disconnect (.close ctx)
             (throw (ex-info (format "TODO: handle type: %s" (:type msg)) msg))))
