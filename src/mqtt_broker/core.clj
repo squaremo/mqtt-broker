@@ -30,6 +30,7 @@
   (stop [_ system] system))
 
 (defn reply [ctx msg]
+  (infof "Replying to MQTT message with response: %s" msg)
   (doto ctx
     (.write msg)
     (.flush)))
@@ -94,9 +95,9 @@
                (proxy [ChannelInitializer] []
                  (initChannel [ch]
                    (debugf "Initializing channel with handlers: %s" (vec handlers))
-                   (-> ch (.pipeline) (.addLast (into-array ChannelHandler (map (fn [f] (f)) handlers)))))))
-              (.option ChannelOption/SO_BACKLOG (int 128))
-              (.childOption ChannelOption/SO_KEEPALIVE true))
+                   (-> ch (.pipeline) (.addLast (into-array ChannelHandler (map (fn [f] (if (fn? f) (f) f)) handlers)))))))
+              (.option ChannelOption/SO_BACKLOG (int (or (:so-backlog config) 128)))
+              (.childOption ChannelOption/SO_KEEPALIVE (or (:so-keepalive config) true)))
 
           (-> system
               (assoc-in [(:jig/id config) :channel] (-> b (.bind (int 1234))))
