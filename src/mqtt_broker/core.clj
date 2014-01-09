@@ -2,6 +2,7 @@
   (:require
    jig
    [jig.util :refer (get-dependencies satisfying-dependency)]
+   [clojure.core.async :refer (>!!)]
    [mqtt.decoder :refer (make-decoder)]
    [mqtt.encoder :refer (make-encoder)]
    [clojure.tools.logging :refer :all])
@@ -13,22 +14,6 @@
    (io.netty.channel.socket.nio NioServerSocketChannel)
    (jig Lifecycle)))
 
-(deftype MqttDecoder [config]
-  Lifecycle
-  (init [_ system] system)
-  (start [_ system]
-    (debugf "Adding netty handler to system at %s" [(:jig/id config) ::handler-factory])
-    (assoc-in system [(:jig/id config) ::handler-factory] #(make-decoder)))
-  (stop [_ system] system))
-
-(deftype MqttEncoder [config]
-  Lifecycle
-  (init [_ system] system)
-  (start [_ system]
-    (debugf "Adding netty handler to system at %s" [(:jig/id config) ::handler-factory])
-    (assoc-in system [(:jig/id config) ::handler-factory] #(make-encoder)))
-  (stop [_ system] system))
-
 (defn reply [ctx msg]
   (infof "Replying to MQTT message with response: %s" msg)
   (doto ctx
@@ -39,74 +24,43 @@
   Lifecycle
   (init [_ system] system)
   (start [_ system]
-    (debugf "Adding netty handler to system at %s" [(:jig/id config) ::handler-factory])
-    (assoc-in
-     system
-     [(:jig/id config) ::handler-factory]
-     #(proxy [ChannelHandlerAdapter] []
-        (channelRead [ctx msg]
-          (case (:type msg)
-            :connect (reply ctx {:type :connack})
-            :pingreq (reply ctx {:type :pingresp})
-            :publish (infof "PUBLISH MESSAGE: topic is %s, payload is '%s'" (:topic msg) (String. (:payload msg)))
-            :disconnect (.close ctx)
-            (throw (ex-info (format "TODO: handle type: %s" (:type msg)) msg))))
+    (let [ch (some (comp :channel system) (:jig/dependencies config))
+          subs (atom {})]
+      (assert ch)
+      (infof "Channel %s" ch)
+      (debugf "Adding netty handler to system at %s" [(:jig/id config) :jig.netty/handler-factory])
+      (-> system
+          (assoc-in
+           [(:jig/id config) :jig.netty/handler-factory]
+           (fn []
+             (proxy [ChannelHandlerAdapter] []
+               (channelActive [ctx]
+                 (infof "Channel active!"))
+               (channelRead [ctx msg]
+                 (case (:type msg)
+                   :connect (reply ctx {:type :connack})
+                   :pingreq (reply ctx {:type :pingresp})
 
-        (exceptionCaught [ctx cause]
-          (.printStackTrace cause)
-          (.close ctx)))))
+                   :publish (do
+                              (infof "Message received on topic '%s', publish to %d subscribers" (:topic msg) (count (get @subs (:topic msg))))
+                              (doseq [ctx (get @subs (:topic msg))]
+                                (.writeAndFlush ctx msg)))
+
+                   :subscribe (do
+                                (infof "Subscribe to %s" (:topics msg))
+                                ;; TODO QoS
+                                (reply ctx {:type :suback})
+                                (swap! subs (fn [subs]
+                                              (reduce #(update-in %1 [%2] conj ctx) subs (map first (:topics msg)))))
+                                )
+                   :disconnect (.close ctx)
+                   (throw (ex-info (format "TODO: handle type: %s" (:type msg)) msg))))
+
+               (exceptionCaught [ctx cause]
+                 (try
+                   (throw cause)
+                   (finally (.close ctx)))
+
+                 ))))
+          (assoc-in [(:jig/id config) :subscriptions] subs))))
   (stop [_ system] system))
-
-(deftype EchoHandler [config]
-  Lifecycle
-  (init [_ system] system)
-  (start [_ system]
-    (assoc-in system [(:jig/id config) ::handler-factory]
-              #(proxy [ChannelHandlerAdapter] []
-                 (channelRead [ctx msg]
-                   (.write ctx msg)
-                   (.flush ctx))
-                 (exceptionCaught [ctx cause]
-                   (.printStackTrace cause)
-                   (.close ctx)))))
-  (stop [_ system] system))
-
-;; From https://github.com/netty/netty/wiki/User-guide-for-5.x
-(deftype Server [config]
-  Lifecycle
-  (init [_ system] system)
-  (start [_ system]
-
-    (debugf "Dependencies are %s" (vec (get-dependencies system config)))
-
-    (let [handlers (keep #(get-in system [(:jig/id %) ::handler-factory]) (get-dependencies system config))]
-
-      (when (empty? handlers)
-        (throw (ex-info (format "No dependencies of %s register entries of %s"
-                                (:jig/id config) ::handler-factory) {:jig/id (:jig/id config)})))
-
-      (let [boss-group (NioEventLoopGroup.)
-            worker-group (NioEventLoopGroup.)]
-        (let [b (ServerBootstrap.)]
-          (-> b
-              (.group boss-group worker-group)
-              (.channel NioServerSocketChannel)
-              (.childHandler
-               (proxy [ChannelInitializer] []
-                 (initChannel [ch]
-                   (debugf "Initializing channel with handlers: %s" (vec handlers))
-                   (-> ch (.pipeline) (.addLast (into-array ChannelHandler (map (fn [f] (if (fn? f) (f) f)) handlers)))))))
-              (.option ChannelOption/SO_BACKLOG (int (or (:so-backlog config) 128)))
-              (.childOption ChannelOption/SO_KEEPALIVE (or (:so-keepalive config) true)))
-
-          (-> system
-              (assoc-in [(:jig/id config) :channel] (-> b (.bind (int 1234))))
-              (assoc-in [(:jig/id config) :event-loop-groups :boss-group] (NioEventLoopGroup.))
-              (assoc-in [(:jig/id config) :event-loop-groups :worker-group] (NioEventLoopGroup.)))))))
-  (stop [_ system]
-    (let [fut (get-in system [(:jig/id config) :channel])]
-      (.awaitUninterruptibly fut)       ; await for it to be bound
-      (-> fut (.channel) (.close) (.sync)))
-    (.shutdownGracefully (get-in system [(:jig/id config) :event-loop-groups :worker-group]))
-    (.shutdownGracefully (get-in system [(:jig/id config) :event-loop-groups :boss-group]))
-    system))

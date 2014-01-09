@@ -1,18 +1,25 @@
 {:jig/components
 
- {:decoder
-  {:jig/component mqtt-broker.core/MqttDecoder
+ {:pub-channel
+  {:jig/component jig.async/Channel
+   :jig/project "../mqtt-broker/project.clj"
+   :size 100}
+
+  :mqtt-decoder
+  {:jig/component jig.netty.mqtt/MqttDecoder
    :jig/project "../mqtt-broker/project.clj"}
 
-  :encoder
-  {:jig/component mqtt-broker.core/MqttEncoder
+  :mqtt-encoder
+  {:jig/component jig.netty.mqtt/MqttEncoder
    :jig/project "../mqtt-broker/project.clj"}
 
-  :handler
+  :mqtt-handler
   {:jig/component mqtt-broker.core/MqttHandler
-   :jig/project "../mqtt-broker/project.clj"}
+   :jig/project "../mqtt-broker/project.clj"
+   :jig/dependencies [:pub-channel]}
 
-  :server
-  {:jig/component mqtt-broker.core/Server
-   :jig/dependencies [:decoder :encoder :handler]
-   :jig/project "../mqtt-broker/project.clj"}}}
+  :mqtt-server
+  {:jig/component jig.netty/Server
+   :jig/dependencies [:mqtt-decoder :mqtt-encoder :mqtt-handler]
+   :jig/project "../mqtt-broker/project.clj"
+   :port 1883}}}
