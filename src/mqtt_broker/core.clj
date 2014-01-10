@@ -11,13 +11,13 @@
       (channelRead [ctx msg]
         (case (:type msg)
           :connect (.writeAndFlush ctx {:type :connack})
-          :pingreq (.writeAndFlush ctx {:type :pingresp})
-          :publish (doseq [ctx (get @subs (:topic msg))]
-                     (.writeAndFlush ctx msg))
           :subscribe (do (.writeAndFlush ctx {:type :suback})
                          (swap! subs (fn [subs]
                                        (reduce #(update-in %1 [%2] conj ctx)
                                                subs (map first (:topics msg))))))
+          :publish (doseq [ctx (get @subs (:topic msg))]
+                     (.writeAndFlush ctx msg))
+          :pingreq (.writeAndFlush ctx {:type :pingresp})
           :disconnect (.close ctx)))
       (exceptionCaught [ctx cause]
         (try (throw cause)
