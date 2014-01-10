@@ -46,44 +46,45 @@ mosquitto_pub -t /test -m "Hello"
 
 ## How it works
 
-[config.clj](config.clj) shows you which components make up this system,
+[resources/config.clj](resources/config.clj) shows you which components make up this system,
 including the codec provided by
 [clj-mqtt](https://github.com/xively/clj-mqtt).
 
-Jig reads the [config.clj](config.clj) file and instantiates the
-components therein. If you have [graphviz]() installed you can type
-`(graph)` at the console to view a diagram showing how the components
-fit together.
+This project depends on [Jig](https://github.com/juxt/jig) which
+provides the `go` function, which reads the [config.clj](config.clj) file
+and instantiates the components therein. If you have [graphviz]()
+installed you can type `(graph)` at the console to view a diagram
+showing how the components fit together.
 
-We provide the code to just one of these called `MqttHandler` which injects a
-function into the _system map_. (Jig is a bit like an application
-container and the 'system map' is an emerging Clojure pattern to collate
-application state into a single data structure).
+We provide the code to one of these (`MqttHandler`) which injects a
+function into the _system map_, a modern Clojure pattern to collate
+application state into a single data structure.
 
-Another component called `jig.netty/Server` is specified here, along
-with its port number (1883). This provides a generic adapter for Netty
-5 - as such the code for this is in this [Jig extension](). On start up,
-this component looks across its dependencies to find the other
+Another, `jig.netty/Server`, is specified with its port number
+(1883). This component provides a generic adapter for Netty 5. On start
+up, this component looks across its dependencies to find other
 components to include in the pipeline that it creates when a client
 connects.
 
-`jig.netty.mqtt/MqttEncoder` and `jig.netty.mqtt/MqttDecoder`, are
-adapters for the codec code kindly provided by clj-mqtt. This codec
-further reduces the Clojure code we must write, since they convert
-between low-level Netty byte buffers and convenient Clojure maps.
+`jig.netty.mqtt/MqttEncoder` and `jig.netty.mqtt/MqttDecoder` are
+adapters for the codec code kindly provided by
+[clj-mqtt](https://github.com/xively/clj-mqtt). This codec further
+reduces the Clojure code we must write, since it converts between
+low-level Netty byte buffers and (more convenient) Clojure maps.
 
-Each request is handled by  the `case` form, dispatching on the :type value of the map decoded by clj-mqtt :-
+Each request is handled by the `case` form, dispatching on the :type
+value of the map decoded by clj-mqtt :-
 
 ```clojure
 (case (:type msg)
           :connect (.writeAndFlush ctx {:type :connack})
           :pingreq (.writeAndFlush ctx {:type :pingresp})
-          :publish (doseq [ctx (get @subs (:topic msg))]
-                     (.writeAndFlush ctx msg))
           :subscribe (do (.writeAndFlush ctx {:type :suback})
                          (swap! subs (fn [subs]
                                        (reduce #(update-in %1 [%2] conj ctx)
                                                subs (map first (:topics msg))))))
+          :publish (doseq [ctx (get @subs (:topic msg))]
+                     (.writeAndFlush ctx msg))
           :disconnect (.close ctx))
 ```
 
