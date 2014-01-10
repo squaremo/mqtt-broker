@@ -20,20 +20,12 @@ service, using Clojure on the JVM.
 * git
 * Java Virtual Machine
 * [Leiningen](http://leiningen.org/)
-* [Jig](https://github.com/juxt/jig) - instructions included below
 * [GraphViz](http://www.graphviz.org/)
 * [mosquitto](http://mosquitto.org/)
 
 ## Method
 
 ```
-$ cd ~/src
-$ git clone https://github.com/OpenSensorsIO/mqtt-broker
-$ git clone https://github.com/juxt/jig
-$ mkdir ~/.jig
-$ cd ~/.jig
-$ ln -s ~/src/mqtt-broker/config.clj
-$ cd ~/src/jig
 $ lein repl
 $ (go)
 
