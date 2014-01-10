@@ -109,8 +109,6 @@ publishing it now to show the core essence of a broker and as a
 foundation on which I and others can build the rest of the MQTT broker
 implementation.
 
-## Licence
-
 ## License
 
 Copyright © 2014 opensensors.io
