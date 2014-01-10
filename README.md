@@ -1,8 +1,9 @@
 # MQTT Broker
 
-An mqtt broker on top of netty, netty.io. This is a very early stage project and should be considered experimental.
+An MQTT broker on top of [Netty](netty.io). This is a very early stage
+project and should be considered experimental.
 
-The intention is to build a fully async non blocking mqtt server.
+The intention is to build a fully async non-blocking MQTT server.
 
 ## Motivation
 
@@ -20,8 +21,8 @@ service, using Clojure on the JVM.
 * git
 * Java Virtual Machine
 * [Leiningen](http://leiningen.org/)
-* [GraphViz](http://www.graphviz.org/)
-* [mosquitto](http://mosquitto.org/)
+* [GraphViz](http://www.graphviz.org/) (definitely optional)
+* [mosquitto](http://mosquitto.org/) (for testing)
 
 ## Method
 
