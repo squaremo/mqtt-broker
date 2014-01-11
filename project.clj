@@ -1,4 +1,4 @@
-(def jig-version "2.0.0-RC7-SNAPSHOT")
+(def jig-version "2.0.0-RC6")
 
 (defproject opensensors/mqtt-broker "0.1.0"
   :description "The OpenSensors.io MQTT broker"
