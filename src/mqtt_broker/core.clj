@@ -10,7 +10,9 @@
     (channelRead [ctx msg]
       (case (:type msg)
         :connect (.writeAndFlush ctx {:type :connack})
-        :subscribe (do (.writeAndFlush ctx {:type :suback})
+        :subscribe (do (.writeAndFlush ctx
+                                       {:type :suback
+                                        :message-id (:message-id msg)})
                        (swap! subs (fn [subs]
                                      (reduce #(update-in %1 [%2] conj ctx)
                                              subs (map first (:topics msg))))))
@@ -24,9 +26,11 @@
 
 (deftype MqttHandler [config]
   Lifecycle
-  (init [_ system] system)
+  (init [_ system]
+    system)
   (start [_ system]
-    (assoc-in system
-              [(:jig/id config) :jig.netty/handler-factory]
-              #(make-channel-handler (atom {}))))
+    (let [submap (atom {})]
+      (assoc-in system
+                [(:jig/id config) :jig.netty/handler-factory]
+                #(make-channel-handler submap))))
   (stop [_ system] system))
