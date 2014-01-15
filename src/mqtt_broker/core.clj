@@ -5,6 +5,16 @@
    (io.netty.channel ChannelHandlerAdapter)
    (jig Lifecycle)))
 
+(defn unsub-ctx [subs ctx topics]
+  (reduce (fn [subs topic]
+            (let [ctxs (get subs topic)]
+              (if (nil? ctxs) subs
+                  (let [without (remove #(= % ctx) ctxs)]
+                    (if (empty? without)
+                      (dissoc subs topic)
+                      (assoc subs topic without))))))
+          subs topics))
+
 (defn make-channel-handler [subs]
   (proxy [ChannelHandlerAdapter] []
     (channelRead [ctx msg]
@@ -16,10 +26,14 @@
                        (swap! subs (fn [subs]
                                      (reduce #(update-in %1 [%2] conj ctx)
                                              subs (map first (:topics msg))))))
+        :unsubscribe (do (.writeAndFlush ctx {:type :unsuback
+                                              :message-id (:message-id msg)})
+                         (swap! subs #(unsub-ctx % ctx (:topics msg))))
         :publish (doseq [ctx (get @subs (:topic msg))]
                    (.writeAndFlush ctx msg))
         :pingreq (.writeAndFlush ctx {:type :pingresp})
-        :disconnect (.close ctx)))
+        :disconnect (do (swap! subs #(unsub-ctx % ctx (keys %)))
+                        (.close ctx))))
     (exceptionCaught [ctx cause]
       (try (throw cause)
            (finally (.close ctx))))))
