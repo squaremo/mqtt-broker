@@ -1,6 +1,7 @@
 (ns mqtt-broker.subs
-   [:refer-clojure :exclude [remove empty]
-    :rename {empty? core-empty?}])
+   (:refer-clojure :exclude [remove empty]
+    :rename {empty? core-empty?})
+   (:use [clojure.string :only [join]]))
 
 ;; A prefix tree with wildcards, for storing subscriptions.
 
@@ -17,30 +18,39 @@
 ;; I'll assume a topic is a sequence of words, e.g., ["foo" "bar"
 ;; "baz"] or ["+" "bar" "#"].
 
-(defprotocol INode
+(defprotocol Node
   ;; Return the set of matches given a suffix
   (matches [this suffix])
   ;; Return a node with the value inserted at suffix
   (insert [this topic value])
   (remove [this topic value]))
 
+(defprotocol Mappity
+  (subs-map [this prefix]))
+
+(defn ->map [root]
+  (subs-map root ""))
+
 (declare make-internal-node)
 (declare make-leaf-node)
 
 (def EMPTY
-  (reify INode
+  (reify
+    Node
     (matches [this topic]
       #{})
     (insert [this topic value]
       (make-leaf-node topic #{value}))
     (remove [this topic value]
-      this)))
+      this)
+    Mappity
+    (subs-map [this prefix] {})))
 
 (defn empty? [subs]
   (= subs EMPTY))
 
 (deftype LeafNode [suffix values]
-  INode
+  Node
   (matches [this topic]
     (if (= topic suffix)
       values
@@ -60,7 +70,11 @@
   (remove [this topic value]
     (if (= topic suffix)
       (make-leaf-node suffix (disj values value))
-      this)))
+      this))
+
+  Mappity
+  (subs-map [this prefix]
+    {(str prefix "/" (join "/" suffix)) values}))
 
 (defn make-leaf-node [suffix values]
   (if (core-empty? values)
@@ -68,7 +82,7 @@
     (LeafNode. suffix values)))
 
 (deftype InternalNode [prefixes here]
-  INode
+  Node
   (matches [this topic]
     (if (core-empty? topic)
       here
@@ -92,13 +106,20 @@
     (if (core-empty? topic)
       (make-internal-node prefixes (disj here value))
       (let [next (first topic)
-            child (get next prefixes)]
+            child (get prefixes next)]
         (if (nil? child)
           this
           (let [without (remove child (rest topic) value)]
             (if (empty? without)
               (make-internal-node (dissoc prefixes next) here)
-              (make-internal-node (assoc prefixes next without) here))))))))
+              (make-internal-node (assoc prefixes next without) here)))))))
+
+  Mappity
+  (subs-map [this prefix]
+    (let [entries (if (core-empty? here) {} {prefix here})]
+      (reduce (fn [es k] (merge es (subs-map (get prefixes k)
+                                             (str prefix "/" k))))
+              entries (keys prefixes)))))
 
 (defn make-internal-node [prefixes here]
   (if (and (core-empty? prefixes) (core-empty? here))
